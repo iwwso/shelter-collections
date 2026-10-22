@@ -1,4 +1,10 @@
 package lv.bootcamp.shelter.service.data;
 
-public class SpeciesStats {
+/**
+ * Totals for one species.
+ *
+ * @author Karyna Litvinova
+ */
+public record SpeciesStats(long total, long vaccinated, long unvaccinated) {
+
 }

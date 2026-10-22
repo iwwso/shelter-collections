@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Writes the text report.
+ * Writes the text report (and a JSON summary).
  *
  * @author Karyna Litvinova
  */
@@ -28,6 +28,11 @@ public class ReportExportService {
     public void writeReport(Path outputPath, ShelterReportData reportData) {
         writeFile(outputPath, buildReport(reportData));
         log.info("Report written to {}", outputPath.toAbsolutePath());
+    }
+
+    public void writeJsonSummary(Path outputPath, ShelterReportData reportData) {
+        writeFile(outputPath, buildJsonSummary(reportData));
+        log.info("JSON summary written to {}", outputPath.toAbsolutePath());
     }
 
     String buildReport(ShelterReportData data) {
@@ -66,6 +71,29 @@ public class ReportExportService {
         return sb.toString();
     }
 
+    String buildJsonSummary(ShelterReportData data) {
+        String perSpecies = data.statsBySpecies().entrySet().stream()
+                .map(e -> String.format("    \"%s\": {\"total\": %d, \"vaccinated\": %d, \"unvaccinated\": %d}",
+                        escape(e.getKey()), e.getValue().total(), e.getValue().vaccinated(), e.getValue().unvaccinated()))
+                .collect(Collectors.joining("," + System.lineSeparator()));
+        String needsVet = data.animalsNeedingVetInput().stream()
+                .map(s -> "\"" + escape(s) + "\"")
+                .collect(Collectors.joining(", "));
+        String invalidRows = data.importResult().invalidRowNumbers().stream()
+                .map(String::valueOf)
+                .collect(Collectors.joining(", "));
+
+        String nl = System.lineSeparator();
+        return "{" + nl
+                + "  \"generated\": \"" + data.generatedAt().format(GENERATED_FORMAT) + "\"," + nl
+                + "  \"totalImported\": " + data.totalImported() + "," + nl
+                + "  \"totalSkipped\": " + data.totalSkipped() + "," + nl
+                + "  \"invalidRows\": [" + invalidRows + "]," + nl
+                + "  \"perSpecies\": {" + nl + perSpecies + nl + "  }," + nl
+                + "  \"needsVetInput\": [" + needsVet + "]" + nl
+                + "}" + nl;
+    }
+
     private void writeFile(Path outputPath, String content) {
         try {
             Path parent = outputPath.toAbsolutePath().getParent();
@@ -82,5 +110,9 @@ public class ReportExportService {
 
     private static String joinOrNone(String joined) {
         return joined.isEmpty() ? "none" : joined;
+    }
+
+    private static String escape(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

@@ -1,20 +1,86 @@
 package lv.bootcamp.shelter.service;
 
+import lombok.extern.slf4j.Slf4j;
+import lv.bootcamp.shelter.model.Animal;
 import lv.bootcamp.shelter.service.data.ShelterReportData;
+import lv.bootcamp.shelter.service.data.SpeciesStats;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.format.DateTimeFormatter;
+import java.util.Map;
+import java.util.stream.Collectors;
 
+/**
+ * Writes the text report.
+ *
+ * @author Karyna Litvinova
+ */
+@Slf4j
 public class ReportExportService {
 
-    public void writeReport(Path outputPath, ShelterReportData reportData) {
-        // TODO Step 4:
-        // 1) Write upload-report.txt in required format.
-        // 2) Include generated date, imported/skipped totals.
-        // 3) Include unique species and per-species breakdown.
-        // 4) Include oldest animal per species.
-        // 5) Include animalsNeedingVetInput as name(species), name2(species2).
-        // 6) Use UTF-8 and try-with-resources.
+    private static final DateTimeFormatter GENERATED_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss");
 
-        throw new UnsupportedOperationException("TODO: implement report export");
+    public void writeReport(Path outputPath, ShelterReportData reportData) {
+        writeFile(outputPath, buildReport(reportData));
+        log.info("Report written to {}", outputPath.toAbsolutePath());
+    }
+
+    String buildReport(ShelterReportData data) {
+        StringBuilder sb = new StringBuilder();
+        String nl = System.lineSeparator();
+
+        sb.append("=== Shelter Upload Report ===").append(nl);
+        sb.append("Generated: ").append(data.generatedAt().format(GENERATED_FORMAT)).append(nl);
+        sb.append("Total imported: ").append(data.totalImported()).append(nl);
+        sb.append("Total skipped: ").append(data.totalSkipped()).append(nl);
+        sb.append("Invalid rows: ").append(joinOrNone(data.importResult().invalidRowNumbers().stream()
+                .map(String::valueOf).collect(Collectors.joining(", ")))).append(nl);
+        sb.append(nl);
+
+        sb.append("Unique species (").append(data.uniqueSpecies().size()).append("): ")
+                .append(joinOrNone(String.join(", ", data.uniqueSpecies()))).append(nl);
+        sb.append(nl);
+
+        sb.append("Per species:").append(nl);
+        for (Map.Entry<String, SpeciesStats> entry : data.statsBySpecies().entrySet()) {
+            SpeciesStats s = entry.getValue();
+            sb.append(String.format("  %s: total=%d, vaccinated=%d, unvaccinated=%d",
+                    entry.getKey(), s.total(), s.vaccinated(), s.unvaccinated())).append(nl);
+        }
+        sb.append(nl);
+
+        sb.append("Oldest animal per species (unknown ages excluded):").append(nl);
+        for (String species : data.uniqueSpecies()) {
+            Animal oldest = data.oldestBySpecies().get(species);
+            String value = (oldest == null) ? "no known ages" : oldest.getName() + " (" + oldest.getAge() + " years)";
+            sb.append("  ").append(species).append(": ").append(value).append(nl);
+        }
+        sb.append(nl);
+
+        sb.append("Needs vet input: ").append(joinOrNone(String.join(", ", data.animalsNeedingVetInput()))).append(nl);
+        return sb.toString();
+    }
+
+    private void writeFile(Path outputPath, String content) {
+        try {
+            Path parent = outputPath.toAbsolutePath().getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            try (BufferedWriter writer = Files.newBufferedWriter(outputPath, StandardCharsets.UTF_8)) {
+                writer.write(content);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("Cannot write " + outputPath, e);
+        }
+    }
+
+    private static String joinOrNone(String joined) {
+        return joined.isEmpty() ? "none" : joined;
     }
 }
